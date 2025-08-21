@@ -214,7 +214,7 @@ class Cell:
         #     print(
         #         f"Cell: {self.cell_id} allocated {allocation['downlink']} DL PRBs for UE {ue_imsi}"
         #     )
-
+    '''
     def estimate_ue_bitrate_and_latency(self):
         for ue in self.connected_ue_list.values():
             if ue.downlink_mcs_data is None:
@@ -231,6 +231,31 @@ class Cell:
             )
             ue.set_downlink_bitrate(dl_bitrate)
             # TODO: downlink and uplink latency
+      '''      
+    def estimate_ue_bitrate_and_latency(self, delta_time):
+        for ue in self.connected_ue_list.values():
+            if ue.downlink_mcs_data is None:
+                print(f"Cell {self.cell_id}: UE {ue.ue_imsi} has no downlink MCS data. Skipping.")
+                continue
+
+            ue_modulation_order = ue.downlink_mcs_data["modulation_order"]
+            ue_code_rate = ue.downlink_mcs_data["target_code_rate"]
+            ue_dl_prb  = self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"]
+
+            # Achievable DL bitrate (bits/s)
+            # TODO: uplink bitrate
+            dl_bitrate = estimate_throughput(ue_modulation_order, ue_code_rate, ue_dl_prb)
+            ue.set_downlink_bitrate(dl_bitrate)
+            # TODO: downlink and uplink latency
+
+            # Optional: drain a per-UE buffer if you added ue.dl_buffer_bytes
+            if hasattr(ue, "dl_buffer_bytes"):
+                bytes_can_send   = (dl_bitrate / 8.0) * delta_time
+                transmitted      = min(bytes_can_send, ue.dl_buffer_bytes)
+                ue.dl_buffer_bytes -= transmitted
+
+                # Simple queueing-delay proxy (seconds). Set 0 if no capacity.
+                ue.downlink_latency = (ue.dl_buffer_bytes / (dl_bitrate / 8.0)) if dl_bitrate > 0 else 0.0
 
     def deregister_ue(self, ue):
         if ue.ue_imsi in self.prb_ue_allocation_dict:
