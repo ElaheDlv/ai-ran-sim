@@ -32,7 +32,18 @@ class xAppKPICollector(xAppBase):
     def _row_for_ue(self, ue):
         # Basic counts
         num_ues = len(self.ue_list)
+        
+        #### I am not sure if I need to consider this or the connected UEs only
+        # (connected UEs only)
+        '''
+        for ue in self.ue_list.values():
+            cell = ue.current_cell
+            if cell is None:
+                continue
 
+            # cell-level aggregates
+            num_ues = len(cell.connected_ue_list)
+        '''
         # Per-UE + per-cell objects
         cell = ue.current_cell
         bs   = ue.current_bs
