@@ -31,6 +31,10 @@ class UE:
         simulation_engine=None,
         connection_time=settings.UE_DEFAULT_TIMEOUT,
     ):
+        # downlink buffer related attributes
+        self.dl_buffer_bytes = 0
+        self.last_new_dl_bytes = 0
+
         self.ue_imsi = ue_imsi
         self.operation_region = operation_region
         self.position_x = position_x
@@ -220,6 +224,32 @@ class UE:
         self.connected = True
 
         return True
+    
+    
+    def generate_downlink_traffic(self, delta_time, mode="gbr", avg_bps=None):
+        # generate downlink traffic based on the specified mode
+        # mode can be "gbr", "const", or "poisson"
+        # for "gbr", the offered bps is taken from the qos_profile GBR_DL
+        # for "const", the offered bps is taken from the avg_bps parameter
+        # for "poisson", the offered bps is taken from the avg_bps parameter
+        # the generated traffic is added to the dl_buffer_bytes
+        # the function returns the number of new bytes added to the buffer
+        offered_bps = 0
+        if mode == "gbr" and self.qos_profile:
+            offered_bps = self.qos_profile.get("GBR_DL", 0)
+        elif mode == "const" and avg_bps is not None:
+            offered_bps = avg_bps
+        elif mode == "poisson" and avg_bps is not None:
+            lam_bytes = max(0.0, (avg_bps / 8.0) * delta_time)
+            new_data_bytes = int(np.random.poisson(lam_bytes))
+            self.dl_buffer_bytes += new_data_bytes
+            self.last_new_dl_bytes = new_data_bytes
+            return new_data_bytes
+        new_data_bytes = int((offered_bps / 8.0) * delta_time)
+        self.dl_buffer_bytes += new_data_bytes
+        self.last_new_dl_bytes = new_data_bytes
+        return new_data_bytes
+
 
     def execute_handover(self, target_cell):
         # reset current cell data
@@ -464,8 +494,12 @@ class UE:
                 "response": response,
                 "ai_service_name": ai_service_subscription.ai_service_name,
             }
+            resp_down_bytes = int(size)  # simple proxy for response payload
+            self.dl_buffer_bytes += resp_down_bytes
+
 
     def step(self, delta_time):
+        self.generate_downlink_traffic(delta_time, mode="gbr")
         self.move_towards_target(delta_time)
         self.monitor_signal_strength()
         self.check_rrc_meas_events_to_monitor()
@@ -498,6 +532,8 @@ class UE:
             "downlink_latency": self.downlink_latency,
             "uplink_bitrate": self.uplink_bitrate,
             "uplink_latency": self.uplink_latency,
+            "dl_buffer_bytes": self.dl_buffer_bytes,
+            "last_new_dl_bytes": getattr(self, "last_new_dl_bytes", 0),
             "downlink_received_power_dBm_dict": {
                 cell_id: {
                     "received_power_dBm": cell_data["received_power_dBm"],

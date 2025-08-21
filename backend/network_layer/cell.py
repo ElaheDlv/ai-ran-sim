@@ -143,7 +143,9 @@ class Cell:
         self.allocate_prb()
 
         # for each UE, estimate the downlink, uplink bitrate and latency
-        self.estimate_ue_bitrate_and_latency()
+        #self.estimate_ue_bitrate_and_latency()
+        self.estimate_ue_bitrate_and_latency(delta_time)
+
 
     def allocate_prb(self):
         # QoS-aware Proportional Fair Scheduling (PFS)
