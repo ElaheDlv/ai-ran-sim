@@ -3,67 +3,53 @@ import csv, time
 from .xapp_base import xAppBase
 
 class xAppKPICollector(xAppBase):
-    """
-    Scrapes per-UE KPIs each sim step and appends to a CSV.
-    Minimal assumptions: uses existing fields; leaves non-modeled ones as None.
-    """
     def __init__(self, ric=None, out_path="kpis.csv"):
         super().__init__(ric=ric)
         self.enabled = True
         self.out_path = out_path
         self._wrote_header = False
 
-        # CSV columns (your requested list)
         self.fields = [
             "Timestamp","num_ues","IMSI","RNTI",
             "slicing_enabled","slice_id","slice_prb","power_multiplier","scheduling_policy",
-            #"dl_mcs","dl_n_samples","dl_buffer_bytes","tx_brate_downlink_Mbps",
-            "dl_mcs","dl_n_samples","dl_buffer_bytes","new_data_bytes","tx_brate_downlink_Mbps",
+            "dl_mcs","dl_n_samples","dl_buffer_bytes","last_new_dl_bytes","downlink_latency_ms","tx_brate_downlink_Mbps",
             "tx_pkts_downlink","tx_errors_downlink_pct","dl_cqi",
             "ul_mcs","ul_n_samples","ul_buffer_bytes","rx_brate_uplink_Mbps",
             "rx_pkts_uplink","rx_errors_uplink_pct","ul_rssi","ul_sinr","phr",
             "sum_requested_prbs","sum_granted_prbs",
             "dl_pmi","dl_ri","ul_n","ul_turbo_iters",
         ]
-        
 
     def start(self):
-        # no subscriptions needed; we poll state each step
         pass
 
     def _row_for_ue(self, ue):
-        # Basic counts
-        num_ues = len(self.ue_list)
-        
-        #### I am not sure if I need to consider this or the connected UEs only
-        # (connected UEs only)
-        '''
-        for ue in self.ue_list.values():
-            cell = ue.current_cell
-            if cell is None:
-                continue
-
-            # cell-level aggregates
-            num_ues = len(cell.connected_ue_list)
-        '''
-        # Per-UE + per-cell objects
+        # Prefer connected UEs in this serving cell for num_ues
         cell = ue.current_cell
         bs   = ue.current_bs
+        if cell:
+            num_ues = len(cell.connected_ue_list)
+        else:
+            num_ues = len(self.ue_list)  # fallback
 
         # Scheduling policy + PRBs
-        scheduling_policy = getattr(cell, "scheduler_policy", None)
+        scheduling_policy = getattr(cell, "scheduler_policy", None) if cell else None
         prb_alloc = cell.prb_ue_allocation_dict.get(ue.ue_imsi, {"downlink":0,"uplink":0}) if cell else {"downlink":0,"uplink":0}
         dl_granted = prb_alloc["downlink"]
+
         dl_requested = None
-        if hasattr(cell, "dl_total_prb_demand"):
+        if cell and hasattr(cell, "dl_total_prb_demand"):
+            print(f"Cell {cell.cell_id} has dl_total_prb_demand: {cell.dl_total_prb_demand}")
             dl_requested = cell.dl_total_prb_demand.get(ue.ue_imsi, None)
+        else:
+            dl_requested = 0   
+            print(f"Cell {cell.cell_id} has no dl_total_prb_demand")
 
-        # Rates (convert to Mbps)
+        # Rates (Mbps)
         tx_brate_mbps = (ue.downlink_bitrate or 0) / 1e6
-        # UL bitrate not modeled; keep None
-        rx_brate_mbps = None
+        rx_brate_mbps = None  # UL not modeled
 
-        # UL RSSI (dBm) from serving cell’s last measurement
+        # UL RSSI (dBm) from serving cell monitor (cell stores per-UE uplink signal pow)
         ul_rssi = None
         if cell and hasattr(cell, "ue_uplink_signal_strength_dict"):
             ul_rssi = cell.ue_uplink_signal_strength_dict.get(ue.ue_imsi, None)
@@ -71,16 +57,20 @@ class xAppKPICollector(xAppBase):
         # Slicing info
         slicing_enabled = ue.slice_type is not None
         slice_id = ue.slice_type
-        slice_prb = dl_granted  # best available proxy (downlink share); refine if you add UL later
+        slice_prb = dl_granted  # proxy for DL share
 
         # MCS/CQI
         dl_mcs = ue.downlink_mcs_index
         dl_cqi = ue.downlink_cqi
 
-        # Unmodeled fields -> None (placeholders to keep schema stable)
+        # Buffer + latency
+        dl_buffer_bytes = getattr(ue, "dl_buffer_bytes", None)
+        last_new_dl_bytes = getattr(ue, "last_new_dl_bytes", None)
+        downlink_latency_ms = (ue.downlink_latency or 0) * 1000.0  # if you store seconds
+
         placeholders = dict(
             RNTI=None, power_multiplier=None,
-            dl_n_samples=None, dl_buffer_bytes=None,
+            dl_n_samples=None,
             tx_pkts_downlink=None, tx_errors_downlink_pct=None,
             ul_mcs=None, ul_n_samples=None, ul_buffer_bytes=None,
             rx_pkts_uplink=None, rx_errors_uplink_pct=None,
@@ -97,6 +87,9 @@ class xAppKPICollector(xAppBase):
             "slice_prb": slice_prb,
             "scheduling_policy": scheduling_policy,
             "dl_mcs": dl_mcs,
+            "dl_buffer_bytes": dl_buffer_bytes,
+            "last_new_dl_bytes": last_new_dl_bytes,
+            "downlink_latency_ms": downlink_latency_ms,
             "tx_brate_downlink_Mbps": tx_brate_mbps,
             "dl_cqi": dl_cqi,
             "ul_rssi": ul_rssi,
@@ -107,7 +100,6 @@ class xAppKPICollector(xAppBase):
     def step(self):
         if not self.enabled:
             return
-        # Collect one row per connected UE
         rows = []
         for ue in self.ue_list.values():
             if not ue.connected:
@@ -116,7 +108,6 @@ class xAppKPICollector(xAppBase):
         if not rows:
             return
 
-        # Write/append to CSV
         with open(self.out_path, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=self.fields)
             if not self._wrote_header:
