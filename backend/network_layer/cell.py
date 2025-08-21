@@ -175,6 +175,12 @@ class Cell:
                 "dl_required_prbs": dl_required_prbs,
                 "dl_throughput_per_prb": dl_throughput_per_prb,
             }
+            
+        # >>> NEW: persist for KPI collector
+        self.dl_total_prb_demand = {imsi: req["dl_required_prbs"] for imsi, req in ue_prb_requirements.items()}
+        self.dl_throughput_per_prb_map = {imsi: req["dl_throughput_per_prb"] for imsi, req in ue_prb_requirements.items()}
+        # <<< NEW
+
 
         # Step 2: Allocate PRBs to meet GBR
         dl_total_prb_demand = sum(
