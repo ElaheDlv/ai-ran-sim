@@ -17,13 +17,15 @@ class xAppKPICollector(xAppBase):
         self.fields = [
             "Timestamp","num_ues","IMSI","RNTI",
             "slicing_enabled","slice_id","slice_prb","power_multiplier","scheduling_policy",
-            "dl_mcs","dl_n_samples","dl_buffer_bytes","tx_brate_downlink_Mbps",
+            #"dl_mcs","dl_n_samples","dl_buffer_bytes","tx_brate_downlink_Mbps",
+            "dl_mcs","dl_n_samples","dl_buffer_bytes","new_data_bytes","tx_brate_downlink_Mbps",
             "tx_pkts_downlink","tx_errors_downlink_pct","dl_cqi",
             "ul_mcs","ul_n_samples","ul_buffer_bytes","rx_brate_uplink_Mbps",
             "rx_pkts_uplink","rx_errors_uplink_pct","ul_rssi","ul_sinr","phr",
             "sum_requested_prbs","sum_granted_prbs",
             "dl_pmi","dl_ri","ul_n","ul_turbo_iters",
         ]
+        
 
     def start(self):
         # no subscriptions needed; we poll state each step
