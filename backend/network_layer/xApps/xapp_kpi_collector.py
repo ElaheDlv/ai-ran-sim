@@ -53,8 +53,8 @@ class xAppKPICollector(xAppBase):
         prb_alloc = cell.prb_ue_allocation_dict.get(ue.ue_imsi, {"downlink":0,"uplink":0}) if cell else {"downlink":0,"uplink":0}
         dl_granted = prb_alloc["downlink"]
         dl_requested = None
-        if hasattr(cell, "last_dl_prb_demand"):
-            dl_requested = cell.last_dl_prb_demand.get(ue.ue_imsi, None)
+        if hasattr(cell, "dl_total_prb_demand"):
+            dl_requested = cell.dl_total_prb_demand.get(ue.ue_imsi, None)
 
         # Rates (convert to Mbps)
         tx_brate_mbps = (ue.downlink_bitrate or 0) / 1e6
