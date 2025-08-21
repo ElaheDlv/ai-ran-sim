@@ -10,7 +10,7 @@ class xAppKPICollector(xAppBase):
         self._wrote_header = False
 
         self.fields = [
-            "Timestamp","num_ues","IMSI","RNTI",
+            "Timestamp","num_ues","IMSI",
             "slicing_enabled","slice_id","slice_prb","power_multiplier","scheduling_policy",
             "dl_mcs","dl_n_samples","dl_buffer_bytes","last_new_dl_bytes","downlink_latency_ms","tx_brate_downlink_Mbps",
             "tx_pkts_downlink","tx_errors_downlink_pct","dl_cqi",
@@ -69,7 +69,7 @@ class xAppKPICollector(xAppBase):
         downlink_latency_ms = (ue.downlink_latency or 0) * 1000.0  # if you store seconds
 
         placeholders = dict(
-            RNTI=None, power_multiplier=None,
+            power_multiplier=None,
             dl_n_samples=None,
             tx_pkts_downlink=None, tx_errors_downlink_pct=None,
             ul_mcs=None, ul_n_samples=None, ul_buffer_bytes=None,
