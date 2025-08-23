@@ -170,10 +170,23 @@ class xAppLiveKPIDashboard(xAppBase):
 
                 html.Hr(),
 
-                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}, children=[
-                    dcc.Graph(id="ue-bitrate"),
-                    dcc.Graph(id="ue-sinr-cqi"),
+                #html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}, children=[
+                #    dcc.Graph(id="ue-bitrate"),
+                #    dcc.Graph(id="ue-sinr-cqi"),
+                #]),
+                
+                
+                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr", "gap": "12px"}, children=[
+                dcc.Graph(id="ue-bitrate"),
                 ]),
+                
+                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "12px"}, children=[
+                dcc.Graph(id="ue-sinr"),
+                dcc.Graph(id="ue-cqi"),
+            ]),
+
+
+                
                 #'''
                 #html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "12px"}, children=[
                 #    dcc.Graph(id="ue-prb"),
@@ -213,8 +226,11 @@ class xAppLiveKPIDashboard(xAppBase):
         )
         '''
         @app.callback(
+            #Output("ue-bitrate", "figure"),
+            #Output("ue-sinr-cqi", "figure"),
             Output("ue-bitrate", "figure"),
-            Output("ue-sinr-cqi", "figure"),
+            Output("ue-sinr", "figure"),
+            Output("ue-cqi", "figure"),
             Output("ue-prb-granted", "figure"),
             Output("ue-prb-requested", "figure"),
             Output("cell-load", "figure"),
@@ -298,6 +314,26 @@ class xAppLiveKPIDashboard(xAppBase):
                         yaxis2={"title": "CQI", "overlaying": "y", "side": "right", "range": [0, 15]},
                     )
                 )
+                
+                
+                # --- UE SINR ---
+                tr_sinr = []
+                for imsi in ue_keys:
+                    ys_s = list(self._ue_sinr_db.get(imsi, []))
+                    if ys_s:
+                        tr_sinr.append(go.Scatter(x=tx[-len(ys_s):], y=ys_s, mode="lines", name=f"{imsi} SINR (dB)"))
+                fig_sinr = go.Figure(data=tr_sinr, layout=go.Layout(title="Per-UE SINR", xaxis={"title": "Sim step"}, yaxis={"title": "SINR (dB)"}))
+
+                # --- UE CQI ---
+                tr_cqi = []
+                for imsi in ue_keys:
+                    ys_c = list(self._ue_cqi.get(imsi, []))
+                    if ys_c:
+                        tr_cqi.append(go.Scatter(x=tx[-len(ys_c):], y=ys_c, mode="lines", name=f"{imsi} CQI"))
+                fig_cqi = go.Figure(data=tr_cqi, layout=go.Layout(title="Per-UE CQI", xaxis={"title": "Sim step"}, yaxis={"title": "CQI"}))
+
+
+
                 '''
                 # --- UE DL PRBs ---
                 tr_prb = []
@@ -403,7 +439,7 @@ class xAppLiveKPIDashboard(xAppBase):
                 )
 
             #return fig_bitrate, fig_sinr_cqi, fig_prb, fig_cell, fig_buf
-            return fig_bitrate, fig_sinr_cqi, fig_prb_granted, fig_prb_requested, fig_cell,fig_buf,
+            return  fig_bitrate, fig_sinr, fig_cqi, fig_prb_granted, fig_prb_requested, fig_cell,fig_buf
 
 
 
