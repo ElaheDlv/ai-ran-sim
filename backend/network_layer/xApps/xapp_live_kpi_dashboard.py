@@ -31,6 +31,30 @@ MAX_POINTS = 50
 REFRESH_SEC = 0.5
 DASH_PORT = 8061
 
+# --- Layout helpers (keeps graphs compact) ---
+CONTAINER_STYLE = {
+    "fontFamily": "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+    "padding": "12px",
+    "maxWidth": "1400px",     # keeps content from stretching too wide
+    "margin": "0 auto",       # center on page
+}
+
+ROW_2COL = {"display": "grid", "gridTemplateColumns": "repeat(2, minmax(0, 1fr))", "gap": "12px"}
+ROW_1COL = {"display": "grid", "gridTemplateColumns": "1fr", "gap": "12px"}
+
+def tidy(fig, title, ytitle):
+    fig.update_layout(
+        title=title,
+        xaxis_title="Sim step",
+        yaxis_title=ytitle,
+        height=320,                          # <= consistent compact height
+        margin=dict(l=40, r=10, t=40, b=35), # <= tighter margins
+        legend=dict(orientation="h", y=-0.25, x=0),  # horizontal legend below
+        template="plotly_white",
+    )
+    return fig
+
+
 def _deque():
     return deque(maxlen=MAX_POINTS)
 
@@ -152,12 +176,13 @@ class xAppLiveKPIDashboard(xAppBase):
         def cell_options():
             return [{"label": cid, "value": cid} for cid in self.cell_list.keys()]
         '''
+        '''
         app.layout = html.Div(
             style={"fontFamily": "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", "padding": "12px"},
             children=[
                 html.H2("Live RAN KPI Dashboard"),
                 html.P("Streaming KPIs directly from UEs/Cells within the simulator."),
-                #'''
+                #
                 #html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}, children=[
                 #    html.Div([
                 #        html.Label("Focus UEs (optional)"),
@@ -167,7 +192,7 @@ class xAppLiveKPIDashboard(xAppBase):
                 #        html.Label("Focus Cells (optional)"),
                 #        dcc.Dropdown(id="cell-filter", multi=True, options=cell_options()),
                 #    ]),
-                #'''
+                #
                 #]),
                 
 
@@ -190,12 +215,12 @@ class xAppLiveKPIDashboard(xAppBase):
 
 
                 
-                #'''
+                #
                 #html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "12px"}, children=[
                 #    dcc.Graph(id="ue-prb"),
                 #    dcc.Graph(id="cell-load"),
                 #]),
-                #'''
+                #
                 
                 # PRBs (granted) vs PRBs (requested) in separate plots
                 html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "12px"}, children=[
@@ -232,6 +257,52 @@ class xAppLiveKPIDashboard(xAppBase):
 
             ]
         )
+        '''
+        
+        app.layout = html.Div(
+        style=CONTAINER_STYLE,
+        children=[
+            html.H2("Live RAN KPI Dashboard"),
+            html.P("Streaming KPIs directly from UEs/Cells within the simulator."),
+
+            # Controls row (keep it narrow so it doesn't force horizontal scroll)
+            html.Div(
+                style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "8px"},
+                children=[
+                    html.Div([
+                        html.Label("Max DL PRBs per UE (live)"),
+                        dcc.Slider(
+                        id="prb-cap", min=0, max=50, step=1, value=10,
+                        tooltip={"always_visible": False},
+                        marks={0:"0",10:"10",20:"20",30:"30",40:"40",50:"50"},
+                        ),
+                        html.Small("Set lower to throttle any single UE (unlimited = None)."),
+                    ]),
+                    html.Div(id="prb-cap-label", style={"alignSelf": "center"}),
+             ],
+            ),
+
+            html.Hr(),
+
+            html.Div(style=ROW_1COL, children=[ dcc.Graph(id="ue-bitrate") ]),
+
+            html.Div(style=ROW_2COL, children=[
+                dcc.Graph(id="ue-sinr"),
+                dcc.Graph(id="ue-cqi"),
+            ]),
+
+            html.Div(style=ROW_2COL, children=[
+                dcc.Graph(id="ue-prb-granted"),
+                dcc.Graph(id="ue-prb-requested"),
+            ]),
+
+            html.Div(style=ROW_1COL, children=[ dcc.Graph(id="cell-load") ]),
+            html.Div(style=ROW_1COL, children=[ dcc.Graph(id="ue-buffer") ]),
+
+            dcc.Interval(id="tick", interval=int(REFRESH_SEC * 1000), n_intervals=0),
+            ],
+        )
+
         @app.callback(
             Output("prb-cap-label", "children"),
             Input("prb-cap", "value"),
@@ -313,41 +384,21 @@ class xAppLiveKPIDashboard(xAppBase):
                 + list(self._cell_alloc_prb.keys())
                 + list(self._cell_max_prb.keys())
                 ))
-
+                
                 # --- UE bitrate (Mbps) ---
                 tr_bitrate = []
                 for imsi in ue_keys:
                     ys = list(self._ue_dl_mbps.get(imsi, []))
                     if ys:
                         tr_bitrate.append(go.Scatter(x=tx[-len(ys):], y=ys, mode="lines", name=f"{imsi} DL Mbps"))
+                '''
                 fig_bitrate = go.Figure(
                     data=tr_bitrate,
                     layout=go.Layout(title="Per‑UE Downlink Bitrate (Mbps)",
                                      xaxis={"title": "Sim step"}, yaxis={"title": "Mbps"})
                 )
-                
-                
                 '''
-                # --- UE SINR & CQI (two y-axes) ---
-                tr_sinr = []
-                tr_cqi = []
-                for imsi in ue_keys:
-                    ys_s = list(self._ue_sinr_db.get(imsi, []))
-                    if ys_s:
-                        tr_sinr.append(go.Scatter(x=tx[-len(ys_s):], y=ys_s, mode="lines", name=f"{imsi} SINR (dB)", yaxis="y1"))
-                    ys_c = list(self._ue_cqi.get(imsi, []))
-                    if ys_c:
-                        tr_cqi.append(go.Scatter(x=tx[-len(ys_c):], y=ys_c, mode="lines", name=f"{imsi} CQI", yaxis="y2"))
-                fig_sinr_cqi = go.Figure(
-                    data=tr_sinr + tr_cqi,
-                    layout=go.Layout(
-                        title="Per‑UE SINR & CQI",
-                        xaxis={"title": "Sim step"},
-                        yaxis={"title": "SINR (dB)", "side": "left"},
-                        yaxis2={"title": "CQI", "overlaying": "y", "side": "right", "range": [0, 15]},
-                    )
-                )
-                '''
+
                 
                 # --- UE SINR ---
                 tr_sinr = []
@@ -355,7 +406,8 @@ class xAppLiveKPIDashboard(xAppBase):
                     ys_s = list(self._ue_sinr_db.get(imsi, []))
                     if ys_s:
                         tr_sinr.append(go.Scatter(x=tx[-len(ys_s):], y=ys_s, mode="lines", name=f"{imsi} SINR (dB)"))
-                fig_sinr = go.Figure(data=tr_sinr, layout=go.Layout(title="Per-UE SINR", xaxis={"title": "Sim step"}, yaxis={"title": "SINR (dB)"}))
+                
+                #fig_sinr = go.Figure(data=tr_sinr, layout=go.Layout(title="Per-UE SINR", xaxis={"title": "Sim step"}, yaxis={"title": "SINR (dB)"}))
 
                 # --- UE CQI ---
                 tr_cqi = []
@@ -363,46 +415,10 @@ class xAppLiveKPIDashboard(xAppBase):
                     ys_c = list(self._ue_cqi.get(imsi, []))
                     if ys_c:
                         tr_cqi.append(go.Scatter(x=tx[-len(ys_c):], y=ys_c, mode="lines", name=f"{imsi} CQI"))
-                fig_cqi = go.Figure(data=tr_cqi, layout=go.Layout(title="Per-UE CQI", xaxis={"title": "Sim step"}, yaxis={"title": "CQI"}))
+                #fig_cqi = go.Figure(data=tr_cqi, layout=go.Layout(title="Per-UE CQI", xaxis={"title": "Sim step"}, yaxis={"title": "CQI"}))
 
 
 
-                '''
-                # --- UE DL PRBs ---
-                tr_prb = []
-                for imsi in ue_keys:
-                    ys = list(self._ue_dl_prb.get(imsi, []))
-                    if ys:
-                        tr_prb.append(go.Scatter(x=tx[-len(ys):], y=ys, mode="lines", name=f"{imsi} DL PRBs"))
-                fig_prb = go.Figure(
-                    data=tr_prb,
-                    layout=go.Layout(title="Per‑UE Allocated DL PRBs", xaxis={"title": "Sim step"}, yaxis={"title": "PRBs"})
-                '''
-                # --- UE DL PRBs: requested vs granted ---
-                '''
-                tr_prb = []
-                for imsi in ue_keys:
-                    ys_g = list(self._ue_dl_prb.get(imsi, []))       # granted
-                    ys_r = list(self._ue_dl_prb_req.get(imsi, []))   # requested
-                    if ys_g:
-                        tr_prb.append(go.Scatter(
-                        x=tx[-len(ys_g):], y=ys_g, mode="lines", name=f"{imsi} granted"
-                        ))
-                    if ys_r:
-                        tr_prb.append(go.Scatter(
-                        x=tx[-len(ys_r):], y=ys_r, mode="lines",
-                        line={"dash": "dot"}, name=f"{imsi} requested"
-                        ))
-
-                fig_prb = go.Figure(
-                data=tr_prb,
-                layout=go.Layout(
-                    title="Per‑UE DL PRBs — requested vs granted",
-                    xaxis={"title": "Sim step"},
-                    yaxis={"title": "PRBs"}
-                    )
-                    )
-                '''
                 
                 # --- UE DL PRBs: GRANTED (separate plot) ---
                 tr_prb_granted = []
@@ -412,6 +428,7 @@ class xAppLiveKPIDashboard(xAppBase):
                         tr_prb_granted.append(go.Scatter(
                         x=tx[-len(ys_g):], y=ys_g, mode="lines", name=f"{imsi} granted"
                         ))
+                '''
                 fig_prb_granted = go.Figure(
                     data=tr_prb_granted,
                     layout=go.Layout(
@@ -420,6 +437,7 @@ class xAppLiveKPIDashboard(xAppBase):
                     yaxis={"title": "PRBs"}
                     )
                     )
+                '''
 
                 # --- UE DL PRBs: REQUESTED (separate plot) ---
                 tr_prb_requested = []
@@ -429,14 +447,16 @@ class xAppLiveKPIDashboard(xAppBase):
                         tr_prb_requested.append(go.Scatter(
                         x=tx[-len(ys_r):], y=ys_r, mode="lines", name=f"{imsi} requested"
                         ))
+                '''
                 fig_prb_requested = go.Figure(
                 data=tr_prb_requested,
                 layout=go.Layout(
                 title="Per‑UE DL PRBs — REQUESTED",
                 xaxis={"title": "Sim step"},
                 yaxis={"title": "PRBs"}
-        )
-)
+                 )
+                )
+                '''
 
 
 
@@ -453,23 +473,37 @@ class xAppLiveKPIDashboard(xAppBase):
                     ys_m = list(self._cell_max_prb.get(cid, []))
                     if ys_m:
                         tr_cell.append(go.Scatter(x=tx[-len(ys_m):], y=ys_m, mode="lines", name=f"{cid} max PRB", line={"dash": "dash"}))
+                '''
                 fig_cell = go.Figure(
                     data=tr_cell,
                     layout=go.Layout(title="Per‑Cell Load & PRBs",
                                      xaxis={"title": "Sim step"}, yaxis={"title": "Value / PRBs"})
                 )
-
+                '''
                 # --- UE DL buffer (optional) ---
                 tr_buf = []
                 for imsi in ue_keys:
                     ys = list(self._ue_dl_buf.get(imsi, []))
                     if ys:
                         tr_buf.append(go.Scatter(x=tx[-len(ys):], y=ys, mode="lines", name=f"{imsi} DL buffer (bytes)"))
+                '''
                 fig_buf = go.Figure(
                     data=tr_buf,
                     layout=go.Layout(title="Per‑UE DL Buffer (bytes)*",
                                      xaxis={"title": "Sim step"}, yaxis={"title": "Bytes"})
                 )
+                '''
+            
+            fig_bitrate = tidy(go.Figure(data=tr_bitrate), "Per‑UE Downlink Bitrate (Mbps)", "Mbps")
+
+            fig_sinr = tidy(go.Figure(data=tr_sinr), "Per‑UE SINR", "SINR (dB)")
+            fig_cqi  = tidy(go.Figure(data=tr_cqi),  "Per‑UE CQI",  "CQI")
+
+            fig_prb_granted = tidy(go.Figure(data=tr_prb_granted), "Per‑UE DL PRBs — GRANTED", "PRBs")
+            fig_prb_requested = tidy(go.Figure(data=tr_prb_requested), "Per‑UE DL PRBs — REQUESTED", "PRBs")
+
+            fig_cell = tidy(go.Figure(data=tr_cell), "Per‑Cell Load & PRBs", "Value / PRBs")
+            fig_buf  = tidy(go.Figure(data=tr_buf),  "Per‑UE DL Buffer (bytes)*", "Bytes")
 
             #return fig_bitrate, fig_sinr_cqi, fig_prb, fig_cell, fig_buf
             return  fig_bitrate, fig_sinr, fig_cqi, fig_prb_granted, fig_prb_requested, fig_cell,fig_buf
