@@ -27,7 +27,7 @@ from dash import Dash, dcc, html, Input, Output, State
 import plotly.graph_objs as go
 
 #MAX_POINTS = 600      # ~ last 5 minutes at 0.5 s refresh
-MAX_POINTS = 150
+MAX_POINTS = 50
 REFRESH_SEC = 0.5
 DASH_PORT = 8061
 
@@ -143,30 +143,30 @@ class xAppLiveKPIDashboard(xAppBase):
 
         app = Dash(__name__)
         self._dash_app = app
-
+        '''
         def ue_options():
             return [{"label": imsi, "value": imsi} for imsi in self.ue_list.keys()]
         def cell_options():
             return [{"label": cid, "value": cid} for cid in self.cell_list.keys()]
-
+        '''
         app.layout = html.Div(
             style={"fontFamily": "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", "padding": "12px"},
             children=[
                 html.H2("Live RAN KPI Dashboard"),
                 html.P("Streaming KPIs directly from UEs/Cells within the simulator."),
                 #'''
-                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}, children=[
-                    html.Div([
-                        html.Label("Focus UEs (optional)"),
-                        dcc.Dropdown(id="ue-filter", multi=True, options=ue_options()),
-                    ]),
-                    html.Div([
-                        html.Label("Focus Cells (optional)"),
-                        dcc.Dropdown(id="cell-filter", multi=True, options=cell_options()),
-                    ]),
-                
-                ]),
+                #html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}, children=[
+                #    html.Div([
+                #        html.Label("Focus UEs (optional)"),
+                #        dcc.Dropdown(id="ue-filter", multi=True, options=ue_options()),
+                #    ]),
+                #    html.Div([
+                #        html.Label("Focus Cells (optional)"),
+                #        dcc.Dropdown(id="cell-filter", multi=True, options=cell_options()),
+                #    ]),
                 #'''
+               #]),
+                
 
                 html.Hr(),
 
@@ -174,11 +174,24 @@ class xAppLiveKPIDashboard(xAppBase):
                     dcc.Graph(id="ue-bitrate"),
                     dcc.Graph(id="ue-sinr-cqi"),
                 ]),
-
+                #'''
+                #html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "12px"}, children=[
+                #    dcc.Graph(id="ue-prb"),
+                #    dcc.Graph(id="cell-load"),
+                #]),
+                #'''
+                
+                # PRBs (granted) vs PRBs (requested) in separate plots
                 html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "12px"}, children=[
-                    dcc.Graph(id="ue-prb"),
-                    dcc.Graph(id="cell-load"),
+                dcc.Graph(id="ue-prb-granted"),
+                dcc.Graph(id="ue-prb-requested"),
                 ]),
+
+                # Cell load panel kept separate
+                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr", "gap": "12px", "marginTop": "12px"}, children=[
+                dcc.Graph(id="cell-load"),
+                ]),
+
 
                 html.Div(style={"display": "grid", "gridTemplateColumns": "1fr", "gap": "12px", "marginTop": "12px"}, children=[
                     dcc.Graph(id="ue-buffer"),
@@ -187,7 +200,7 @@ class xAppLiveKPIDashboard(xAppBase):
                 dcc.Interval(id="tick", interval=int(REFRESH_SEC * 1000), n_intervals=0),
             ]
         )
-
+        '''
         @app.callback(
             Output("ue-bitrate", "figure"),
             Output("ue-sinr-cqi", "figure"),
@@ -198,13 +211,27 @@ class xAppLiveKPIDashboard(xAppBase):
             State("ue-filter", "value"),
             State("cell-filter", "value"),
         )
-        def _update(_n, ue_filter, cell_filter):
+        '''
+        @app.callback(
+            Output("ue-bitrate", "figure"),
+            Output("ue-sinr-cqi", "figure"),
+            Output("ue-prb-granted", "figure"),
+            Output("ue-prb-requested", "figure"),
+            Output("cell-load", "figure"),
+            Output("ue-buffer", "figure"),
+            Input("tick", "n_intervals"),
+        )
+
+
+
+        #def _update(_n, ue_filter, cell_filter):
+        def _update(_n):
             with self._lock:
                 tx = list(self._t)
                 if not tx:
                     # Empty figures before first sample
                     return go.Figure(), go.Figure(), go.Figure(), go.Figure(), go.Figure()
-
+                '''
                 if ue_filter is None or len(ue_filter) == 0:
                     ue_keys = list(set(
                         list(self._ue_dl_mbps.keys())
@@ -224,6 +251,21 @@ class xAppLiveKPIDashboard(xAppBase):
                     ))
                 else:
                     cell_keys = cell_filter
+                '''
+                ue_keys = list(set(
+                list(self._ue_dl_mbps.keys())
+                + list(self._ue_sinr_db.keys())
+                + list(self._ue_cqi.keys())
+                + list(self._ue_dl_buf.keys())
+                + list(self._ue_dl_prb.keys())
+                + list(getattr(self, "_ue_dl_prb_req", {}).keys())  # if present
+                ))
+
+                cell_keys = list(set(
+                list(self._cell_dl_load.keys())
+                + list(self._cell_alloc_prb.keys())
+                + list(self._cell_max_prb.keys())
+                ))
 
                 # --- UE bitrate (Mbps) ---
                 tr_bitrate = []
@@ -268,6 +310,7 @@ class xAppLiveKPIDashboard(xAppBase):
                     layout=go.Layout(title="Per‑UE Allocated DL PRBs", xaxis={"title": "Sim step"}, yaxis={"title": "PRBs"})
                 '''
                 # --- UE DL PRBs: requested vs granted ---
+                '''
                 tr_prb = []
                 for imsi in ue_keys:
                     ys_g = list(self._ue_dl_prb.get(imsi, []))       # granted
@@ -290,6 +333,42 @@ class xAppLiveKPIDashboard(xAppBase):
                     yaxis={"title": "PRBs"}
                     )
                     )
+                '''
+                
+                # --- UE DL PRBs: GRANTED (separate plot) ---
+                tr_prb_granted = []
+                for imsi in ue_keys:
+                    ys_g = list(self._ue_dl_prb.get(imsi, []))
+                    if ys_g:
+                        tr_prb_granted.append(go.Scatter(
+                        x=tx[-len(ys_g):], y=ys_g, mode="lines", name=f"{imsi} granted"
+                        ))
+                fig_prb_granted = go.Figure(
+                    data=tr_prb_granted,
+                    layout=go.Layout(
+                    title="Per‑UE DL PRBs — GRANTED",
+                    xaxis={"title": "Sim step"},
+                    yaxis={"title": "PRBs"}
+                    )
+                    )
+
+                # --- UE DL PRBs: REQUESTED (separate plot) ---
+                tr_prb_requested = []
+                for imsi in ue_keys:
+                    ys_r = list(getattr(self, "_ue_dl_prb_req", {}).get(imsi, []))
+                    if ys_r:
+                        tr_prb_requested.append(go.Scatter(
+                        x=tx[-len(ys_r):], y=ys_r, mode="lines", name=f"{imsi} requested"
+                        ))
+                fig_prb_requested = go.Figure(
+                data=tr_prb_requested,
+                layout=go.Layout(
+                title="Per‑UE DL PRBs — REQUESTED",
+                xaxis={"title": "Sim step"},
+                yaxis={"title": "PRBs"}
+        )
+)
+
 
 
                 # --- Cell load & PRBs ---
@@ -323,7 +402,10 @@ class xAppLiveKPIDashboard(xAppBase):
                                      xaxis={"title": "Sim step"}, yaxis={"title": "Bytes"})
                 )
 
-            return fig_bitrate, fig_sinr_cqi, fig_prb, fig_cell, fig_buf
+            #return fig_bitrate, fig_sinr_cqi, fig_prb, fig_cell, fig_buf
+            return fig_bitrate, fig_sinr_cqi, fig_prb_granted, fig_prb_requested, fig_cell,fig_buf,
+
+
 
         def _run():
             app.run_server(host="127.0.0.1", port=DASH_PORT, debug=False)
