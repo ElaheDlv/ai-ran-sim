@@ -26,7 +26,8 @@ from collections import defaultdict, deque
 from dash import Dash, dcc, html, Input, Output, State
 import plotly.graph_objs as go
 
-MAX_POINTS = 600      # ~ last 5 minutes at 0.5 s refresh
+#MAX_POINTS = 600      # ~ last 5 minutes at 0.5 s refresh
+MAX_POINTS = 150
 REFRESH_SEC = 0.5
 DASH_PORT = 8061
 
@@ -47,6 +48,7 @@ class xAppLiveKPIDashboard(xAppBase):
         self._ue_cqi     = defaultdict(_deque)      # {IMSI: deque}
         self._ue_dl_buf  = defaultdict(_deque)      # optional: {IMSI: deque}
         self._ue_dl_prb  = defaultdict(_deque)      # from cell allocation map if present
+        self._ue_dl_prb_req = defaultdict(_deque)   # <-- NEW: requested PRBs
 
         # --- Per‑Cell series ---
         self._cell_dl_load    = defaultdict(_deque)  # {cell_id: deque in [0,1]}
@@ -110,6 +112,12 @@ class xAppLiveKPIDashboard(xAppBase):
                     dl_prb = ue_alloc.get("downlink", None)
                     if dl_prb is not None:
                         self._ue_dl_prb[imsi].append(float(dl_prb))
+                    
+                    # robustly handle absence on early steps
+                    dl_req_map = getattr(cell, "dl_total_prb_demand", {}) or {}
+                    dl_requested = dl_req_map.get(imsi, None)
+                    if dl_requested is not None:
+                        self._ue_dl_prb_req[imsi].append(float(dl_requested))
 
             # ---- Per‑Cell ----
             for cell_id, cell in self.cell_list.items():
@@ -124,6 +132,8 @@ class xAppLiveKPIDashboard(xAppBase):
                 max_prb = getattr(cell, "max_dl_prb", None)
                 if max_prb is not None:
                     self._cell_max_prb[cell_id].append(float(max_prb))
+                    
+            
 
     # ---------------- Dash server ----------------
 
@@ -142,9 +152,9 @@ class xAppLiveKPIDashboard(xAppBase):
         app.layout = html.Div(
             style={"fontFamily": "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", "padding": "12px"},
             children=[
-                html.H2("Live RAN KPIs (no CSV)"),
+                html.H2("Live RAN KPI Dashboard"),
                 html.P("Streaming KPIs directly from UEs/Cells within the simulator."),
-
+                #'''
                 html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}, children=[
                     html.Div([
                         html.Label("Focus UEs (optional)"),
@@ -154,7 +164,9 @@ class xAppLiveKPIDashboard(xAppBase):
                         html.Label("Focus Cells (optional)"),
                         dcc.Dropdown(id="cell-filter", multi=True, options=cell_options()),
                     ]),
+                
                 ]),
+                #'''
 
                 html.Hr(),
 
@@ -244,7 +256,7 @@ class xAppLiveKPIDashboard(xAppBase):
                         yaxis2={"title": "CQI", "overlaying": "y", "side": "right", "range": [0, 15]},
                     )
                 )
-
+                '''
                 # --- UE DL PRBs ---
                 tr_prb = []
                 for imsi in ue_keys:
@@ -254,7 +266,31 @@ class xAppLiveKPIDashboard(xAppBase):
                 fig_prb = go.Figure(
                     data=tr_prb,
                     layout=go.Layout(title="Per‑UE Allocated DL PRBs", xaxis={"title": "Sim step"}, yaxis={"title": "PRBs"})
-                )
+                '''
+                # --- UE DL PRBs: requested vs granted ---
+                tr_prb = []
+                for imsi in ue_keys:
+                    ys_g = list(self._ue_dl_prb.get(imsi, []))       # granted
+                    ys_r = list(self._ue_dl_prb_req.get(imsi, []))   # requested
+                    if ys_g:
+                        tr_prb.append(go.Scatter(
+                        x=tx[-len(ys_g):], y=ys_g, mode="lines", name=f"{imsi} granted"
+                        ))
+                    if ys_r:
+                        tr_prb.append(go.Scatter(
+                        x=tx[-len(ys_r):], y=ys_r, mode="lines",
+                        line={"dash": "dot"}, name=f"{imsi} requested"
+                        ))
+
+                fig_prb = go.Figure(
+                data=tr_prb,
+                layout=go.Layout(
+                    title="Per‑UE DL PRBs — requested vs granted",
+                    xaxis={"title": "Sim step"},
+                    yaxis={"title": "PRBs"}
+                    )
+                    )
+
 
                 # --- Cell load & PRBs ---
                 tr_cell = []

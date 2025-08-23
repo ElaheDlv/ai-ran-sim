@@ -26,6 +26,11 @@ class Cell:
         self.connected_ue_list = {}
         self.ue_uplink_signal_strength_dict = {}
         self.scheduler_policy = cell_init_data.get("scheduler_policy", "QoS-aware PFS")
+        
+        # cell.py __init__
+        self.dl_total_prb_demand = {}            # {imsi: int}
+        self.dl_throughput_per_prb_map = {}      # {imsi: float}
+
 
     def __repr__(self):
         return f"Cell({self.cell_id}, base_station={self.base_station.bs_id}, frequency_band={self.frequency_band}, carrier_frequency_MHz={self.carrier_frequency_MHz})"
