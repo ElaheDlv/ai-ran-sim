@@ -30,6 +30,10 @@ class Cell:
         # cell.py __init__
         self.dl_total_prb_demand = {}            # {imsi: int}
         self.dl_throughput_per_prb_map = {}      # {imsi: float}
+        
+        # Limit for max DL PRBs any single UE can get (None = no cap)
+        self.prb_per_ue_cap = None
+
 
 
     def __repr__(self):
@@ -186,6 +190,14 @@ class Cell:
         self.dl_total_prb_demand = {imsi: req["dl_required_prbs"] for imsi, req in ue_prb_requirements.items()}
         self.dl_throughput_per_prb_map = {imsi: req["dl_throughput_per_prb"] for imsi, req in ue_prb_requirements.items()}
         # <<< NEW
+        
+        # ... you compute dl_granted_prbs for this UE ...
+        cap = getattr(self, "prb_per_ue_cap", None)
+        if cap is not None:
+            dl_granted_prbs = min(dl_granted_prbs, int(cap))
+
+        self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"] = int(dl_granted_prbs)
+
 
 
         # Step 2: Allocate PRBs to meet GBR

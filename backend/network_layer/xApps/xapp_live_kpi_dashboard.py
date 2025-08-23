@@ -64,6 +64,9 @@ class xAppLiveKPIDashboard(xAppBase):
 
         # Last step seen (avoid double pushes)
         self._last_step = None
+        
+        self._prb_cap = None  # None = unlimited; or int for a live cap
+
 
     # ---------------- xApp lifecycle ----------------
 
@@ -211,6 +214,22 @@ class xAppLiveKPIDashboard(xAppBase):
                 ]),
 
                 dcc.Interval(id="tick", interval=int(REFRESH_SEC * 1000), n_intervals=0),
+                
+                # Controls row (add this near the top of children[], after title/paragraph)
+                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 2fr", "gap": "12px", "marginTop": "8px"}, children=[
+                html.Div([
+                html.Label("Max DL PRBs per UE (live)"),
+                dcc.Slider(
+                    id="prb-cap",
+                    min=0, max=50, step=1, value=10,  # adjust max to your band’s PRB range
+                    tooltip={"always_visible": True},
+                    marks={0: "0", 10: "10", 20: "20", 30: "30", 40: "40", 50: "50"},
+                ),
+                html.Small("Set to a lower value to throttle any single UE’s allocation (None = unlimited)."),
+            ]),
+            html.Div(id="prb-cap-label", style={"alignSelf": "center"}),
+        ]),
+
             ]
         )
         '''
@@ -237,6 +256,17 @@ class xAppLiveKPIDashboard(xAppBase):
             Output("ue-buffer", "figure"),
             Input("tick", "n_intervals"),
         )
+        @app.callback(
+            Output("prb-cap-label", "children"),
+            Input("prb-cap", "value"),
+            )
+        def _set_cap(val):
+            with self._lock:
+                # None/unlimited handling: you can decide a sentinel; here keep int
+                self._prb_cap = int(val) if val is not None else None
+                for cell in self.cell_list.values():
+                    cell.prb_per_ue_cap = self._prb_cap
+                return f"Current cap: {self._prb_cap if self._prb_cap is not None else 'unlimited'} PRBs/UE"
 
 
 
