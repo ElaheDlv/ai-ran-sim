@@ -156,7 +156,7 @@ class Cell:
         #self.estimate_ue_bitrate_and_latency()
         self.estimate_ue_bitrate_and_latency(delta_time)
 
-
+    '''
     def allocate_prb(self):
         # QoS-aware Proportional Fair Scheduling (PFS)
 
@@ -167,7 +167,7 @@ class Cell:
 
         # sample QoS and channel condition-aware PRB allocation
         ue_prb_requirements = {}
-
+    
         # Step 1: Calculate required PRBs for GBR
         for ue in self.connected_ue_list.values():
             dl_gbr = ue.qos_profile["GBR_DL"]
@@ -226,6 +226,90 @@ class Cell:
                     share = req["dl_required_prbs"] / dl_total_prb_demand
                     additional_prbs = int(share * dl_remaining_prbs)
                     self.prb_ue_allocation_dict[ue_imsi]["downlink"] += additional_prbs
+        '''
+        
+    def allocate_prb(self):
+        # QoS-aware Proportional Fair Scheduling (PFS) with optional per-UE cap
+
+        # reset PRB allocation for all UEs
+        for ue in self.connected_ue_list.values():
+            self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"] = 0
+            self.prb_ue_allocation_dict[ue.ue_imsi]["uplink"] = 0
+
+        ue_prb_requirements = {}
+
+        # ---- Step 1: per-UE PRB demand (from GBR & MCS)
+        for ue in self.connected_ue_list.values():
+            dl_gbr = ue.qos_profile["GBR_DL"]
+            dl_mcs = ue.downlink_mcs_data
+            if dl_mcs is None:
+                # no usable MCS → skip this UE for this step
+                continue
+            dl_throughput_per_prb = estimate_throughput(
+                dl_mcs["modulation_order"], dl_mcs["target_code_rate"], 1
+            )
+            dl_required_prbs = max(0, math.ceil(dl_gbr / dl_throughput_per_prb))
+            ue_prb_requirements[ue.ue_imsi] = {
+                "dl_required_prbs": dl_required_prbs,
+                "dl_throughput_per_prb": dl_throughput_per_prb,
+            }
+
+        # Persist for KPI/xApp consumption
+        self.dl_total_prb_demand = {imsi: d["dl_required_prbs"] for imsi, d in ue_prb_requirements.items()}
+        self.dl_throughput_per_prb_map = {imsi: d["dl_throughput_per_prb"] for imsi, d in ue_prb_requirements.items()}
+
+        if not ue_prb_requirements:
+            return  # nothing to allocate this step
+
+        cap = self.prb_per_ue_cap  # None or an integer
+
+        # ---- Step 2: compute weights = min(request, cap) and allocate proportionally
+        # Desired (capped) demand per UE
+        desired = {
+            imsi: (min(d["dl_required_prbs"], int(cap)) if (cap is not None) else d["dl_required_prbs"])
+            for imsi, d in ue_prb_requirements.items()
+        }
+
+        total_desired = sum(desired.values())
+        budget = int(self.max_dl_prb)
+
+        if total_desired == 0 or budget <= 0:
+            # Nothing requested or no capacity
+            return
+
+        if total_desired <= budget:
+            # We can satisfy everyone up to their capped demand
+            for imsi, want in desired.items():
+                self.prb_ue_allocation_dict[imsi]["downlink"] = int(want)
+            return
+
+        # Proportional share with rounding, respecting cap
+        # First pass: floor allocation
+        alloc = {}
+        remainders = []
+        for imsi, want in desired.items():
+            share_float = budget * (want / total_desired)
+            base = int(math.floor(share_float))
+            alloc[imsi] = min(base, want)  # never exceed per-UE cap (want)
+            # Track remainder for tie‑breaking pass (bigger remainder gets the leftover PRBs)
+            remainders.append((share_float - base, imsi, want))
+
+        used = sum(alloc.values())
+        leftover = max(0, budget - used)
+
+        # Second pass: distribute leftover PRBs by largest fractional remainder,
+        # but do not exceed each UE's desired cap.
+        remainders.sort(reverse=True)  # highest remainder first
+        for _, imsi, want in remainders:
+            if leftover <= 0:
+                break
+            if alloc[imsi] < want:
+                alloc[imsi] += 1
+                leftover -= 1
+
+        for imsi, a in alloc.items():
+            self.prb_ue_allocation_dict[imsi]["downlink"] = int(a)
+
 
         # # Logging
         # for ue_imsi, allocation in self.prb_ue_allocation_dict.items():

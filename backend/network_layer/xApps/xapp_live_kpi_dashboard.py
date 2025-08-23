@@ -232,6 +232,18 @@ class xAppLiveKPIDashboard(xAppBase):
 
             ]
         )
+        @app.callback(
+            Output("prb-cap-label", "children"),
+            Input("prb-cap", "value"),
+            )
+        def _set_cap(val):
+            with self._lock:
+                # None/unlimited handling: you can decide a sentinel; here keep int
+                self._prb_cap = int(val) if val is not None else None
+                for cell in self.cell_list.values():
+                    cell.prb_per_ue_cap = self._prb_cap
+                return f"Current cap: {self._prb_cap if self._prb_cap is not None else 'unlimited'} PRBs/UE"
+
         '''
         @app.callback(
             Output("ue-bitrate", "figure"),
@@ -256,17 +268,6 @@ class xAppLiveKPIDashboard(xAppBase):
             Output("ue-buffer", "figure"),
             Input("tick", "n_intervals"),
         )
-        @app.callback(
-            Output("prb-cap-label", "children"),
-            Input("prb-cap", "value"),
-            )
-        def _set_cap(val):
-            with self._lock:
-                # None/unlimited handling: you can decide a sentinel; here keep int
-                self._prb_cap = int(val) if val is not None else None
-                for cell in self.cell_list.values():
-                    cell.prb_per_ue_cap = self._prb_cap
-                return f"Current cap: {self._prb_cap if self._prb_cap is not None else 'unlimited'} PRBs/UE"
 
 
 
