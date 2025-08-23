@@ -165,7 +165,7 @@ class xAppLiveKPIDashboard(xAppBase):
                 #        dcc.Dropdown(id="cell-filter", multi=True, options=cell_options()),
                 #    ]),
                 #'''
-               #]),
+                #]),
                 
 
                 html.Hr(),
@@ -294,7 +294,9 @@ class xAppLiveKPIDashboard(xAppBase):
                     layout=go.Layout(title="Per‑UE Downlink Bitrate (Mbps)",
                                      xaxis={"title": "Sim step"}, yaxis={"title": "Mbps"})
                 )
-
+                
+                
+                '''
                 # --- UE SINR & CQI (two y-axes) ---
                 tr_sinr = []
                 tr_cqi = []
@@ -314,7 +316,7 @@ class xAppLiveKPIDashboard(xAppBase):
                         yaxis2={"title": "CQI", "overlaying": "y", "side": "right", "range": [0, 15]},
                     )
                 )
-                
+                '''
                 
                 # --- UE SINR ---
                 tr_sinr = []
