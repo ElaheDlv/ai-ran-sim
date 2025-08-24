@@ -191,13 +191,6 @@ class Cell:
         self.dl_throughput_per_prb_map = {imsi: req["dl_throughput_per_prb"] for imsi, req in ue_prb_requirements.items()}
         # <<< NEW
         
-        # ... you compute dl_granted_prbs for this UE ...
-        cap = getattr(self, "prb_per_ue_cap", None)
-        if cap is not None:
-            dl_granted_prbs = min(dl_granted_prbs, int(cap))
-
-        self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"] = int(dl_granted_prbs)
-
 
 
         # Step 2: Allocate PRBs to meet GBR
@@ -244,6 +237,9 @@ class Cell:
             dl_mcs = ue.downlink_mcs_data
             if dl_mcs is None:
                 # no usable MCS → skip this UE for this step
+                print(
+                    f"Cell {self.cell_id}: UE {ue.ue_imsi} has no downlink MCS data. Skipping."
+                )
                 continue
             dl_throughput_per_prb = estimate_throughput(
                 dl_mcs["modulation_order"], dl_mcs["target_code_rate"], 1
