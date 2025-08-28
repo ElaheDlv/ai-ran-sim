@@ -34,11 +34,20 @@ class Cell:
         # Limit for max DL PRBs any single UE can get (None = no cap)
         #self.prb_per_ue_cap = None
         self.prb_per_ue_cap = settings.RAN_PRB_PER_UE_CAP 
+        
+        self.slice_shares = {"eMBB": 0.5, "URLLC": 0.3, "mMTC": 0.2}  # default
+        self.slice_caps   = {"eMBB": None, "URLLC": None, "mMTC": None}  # optional per-slice cap
 
 
 
     def __repr__(self):
         return f"Cell({self.cell_id}, base_station={self.base_station.bs_id}, frequency_band={self.frequency_band}, carrier_frequency_MHz={self.carrier_frequency_MHz})"
+
+    
+    def slice_budget(self, slice_name):
+        share = self.slice_shares.get(slice_name, 0.0)
+        return int(max(0, share) * int(self.max_dl_prb))
+
 
     @property
     def allocated_dl_prb(self):
@@ -157,70 +166,7 @@ class Cell:
         #self.estimate_ue_bitrate_and_latency()
         self.estimate_ue_bitrate_and_latency(delta_time)
 
-    '''
-    def allocate_prb(self):
-        # QoS-aware Proportional Fair Scheduling (PFS)
 
-        # reset PRB allocation for all UEs
-        for ue in self.connected_ue_list.values():
-            self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"] = 0
-            self.prb_ue_allocation_dict[ue.ue_imsi]["uplink"] = 0
-
-        # sample QoS and channel condition-aware PRB allocation
-        ue_prb_requirements = {}
-    
-        # Step 1: Calculate required PRBs for GBR
-        for ue in self.connected_ue_list.values():
-            dl_gbr = ue.qos_profile["GBR_DL"]
-            dl_mcs = ue.downlink_mcs_data  # Assume this attribute exists
-            if dl_mcs is None:
-                print(
-                    f"Cell {self.cell_id}: UE {ue.ue_imsi} has no downlink MCS data. Skipping."
-                )
-                continue
-            dl_throughput_per_prb = estimate_throughput(
-                dl_mcs["modulation_order"], dl_mcs["target_code_rate"], 1
-            )
-            dl_required_prbs = math.ceil(dl_gbr / dl_throughput_per_prb)
-            ue_prb_requirements[ue.ue_imsi] = {
-                "dl_required_prbs": dl_required_prbs,
-                "dl_throughput_per_prb": dl_throughput_per_prb,
-            }
-            
-        # >>> NEW: persist for KPI collector
-        self.dl_total_prb_demand = {imsi: req["dl_required_prbs"] for imsi, req in ue_prb_requirements.items()}
-        self.dl_throughput_per_prb_map = {imsi: req["dl_throughput_per_prb"] for imsi, req in ue_prb_requirements.items()}
-        # <<< NEW
-        
-
-
-        # Step 2: Allocate PRBs to meet GBR
-        dl_total_prb_demand = sum(
-            req["dl_required_prbs"] for req in ue_prb_requirements.values()
-        )
-
-        if dl_total_prb_demand <= self.max_dl_prb:
-            # allocate PRBs based on the required PRBs
-            for ue_imsi, req in ue_prb_requirements.items():
-                self.prb_ue_allocation_dict[ue_imsi]["downlink"] = req[
-                    "dl_required_prbs"
-                ]
-        else:
-            # allocate PRBs based on the proportion
-            # first allocate at least one PRB to each UE to ensure minimum service
-            dl_remaining_prbs = self.max_dl_prb
-            for ue in self.connected_ue_list.values():
-                prb = min(1, dl_remaining_prbs)
-                self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"] = prb
-                dl_remaining_prbs -= prb
-
-            # then allocate the remaining PRBs based on the proportion
-            if dl_remaining_prbs > 0:
-                for ue_imsi, req in ue_prb_requirements.items():
-                    share = req["dl_required_prbs"] / dl_total_prb_demand
-                    additional_prbs = int(share * dl_remaining_prbs)
-                    self.prb_ue_allocation_dict[ue_imsi]["downlink"] += additional_prbs
-        '''
         
     def allocate_prb(self):
         # QoS-aware Proportional Fair Scheduling (PFS) with optional per-UE cap
@@ -313,24 +259,7 @@ class Cell:
         #     print(
         #         f"Cell: {self.cell_id} allocated {allocation['downlink']} DL PRBs for UE {ue_imsi}"
         #     )
-    '''
-    def estimate_ue_bitrate_and_latency(self):
-        for ue in self.connected_ue_list.values():
-            if ue.downlink_mcs_data is None:
-                print(
-                    f"Cell {self.cell_id}: UE {ue.ue_imsi} has no downlink MCS data. Skipping."
-                )
-                continue
-            ue_modulation_order = ue.downlink_mcs_data["modulation_order"]
-            ue_code_rate = ue.downlink_mcs_data["target_code_rate"]
-            ue_dl_prb = self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"]
-            # TODO: uplink bitrate
-            dl_bitrate = estimate_throughput(
-                ue_modulation_order, ue_code_rate, ue_dl_prb
-            )
-            ue.set_downlink_bitrate(dl_bitrate)
-            # TODO: downlink and uplink latency
-      '''      
+    
     def estimate_ue_bitrate_and_latency(self, delta_time):
         for ue in self.connected_ue_list.values():
             if ue.downlink_mcs_data is None:
