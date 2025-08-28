@@ -6,6 +6,14 @@ RAN_BS_REF_SIGNAL_DEFAULT_TRASNMIT_POWER = 40
 RAN_PRB_PER_UE_CAP = 50
 RAN_PRB_CAP_SLIDER_DEFAULT = RAN_PRB_PER_UE_CAP
 RAN_PRB_CAP_SLIDER_MAX = 273  
+
+# Default normalized slice shares (used if xApp hasn't overridden yet)
+RAN_DEFAULT_SLICE_WEIGHTS = {
+    "eMBB": 0.6,
+    "URLLC": 0.3,
+    "mMTC": 0.1,
+}
+
 # Usually n1 bands are often frequency-division duplex (FDD) bands, while n78 and n258 are typically time-division duplex (TDD) bands.
 # so while n78 and n258 bands needs to be split into downlink and uplink separately, n1 bands are usually not split
 # as they have a fixed downlink/uplink ratio linked to separate carrier frequencies
