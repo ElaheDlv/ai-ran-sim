@@ -26,6 +26,10 @@ from collections import defaultdict, deque
 from dash import Dash, dcc, html, Input, Output, State
 import plotly.graph_objs as go
 
+from settings import (
+    RAN_PRB_CAP_SLIDER_DEFAULT, RAN_PRB_CAP_SLIDER_MAX
+)
+
 #MAX_POINTS = 600      # ~ last 5 minutes at 0.5 s refresh
 MAX_POINTS = 50
 REFRESH_SEC = 0.5
@@ -271,16 +275,29 @@ class xAppLiveKPIDashboard(xAppBase):
                 children=[
                     html.Div([
                         html.Label("Max DL PRBs per UE (live)"),
+                        #dcc.Slider(
+                        #id="prb-cap", min=0, max=50, step=1, value=10,
+                        #tooltip={"always_visible": False},
+                        #marks={0:"0",10:"10",20:"20",30:"30",40:"40",50:"50"},
+                        #),
                         dcc.Slider(
-                        id="prb-cap", min=0, max=50, step=1, value=10,
+                        id="prb-cap",
+                        min=0,
+                        max=RAN_PRB_CAP_SLIDER_MAX,
+                        step=1,
+                        value=(RAN_PRB_CAP_SLIDER_DEFAULT or 0),  # if None, show 0; your callback can treat 0 as "unlimited" if you want
                         tooltip={"always_visible": False},
-                        marks={0:"0",10:"10",20:"20",30:"30",40:"40",50:"50"},
-                        ),
+                        marks={0: "0", 10: "10", 20: "20", 30: "30", 40: "40", 50: "50", RAN_PRB_CAP_SLIDER_MAX: str(RAN_PRB_CAP_SLIDER_MAX)},
+                    ), 
                         html.Small("Set lower to throttle any single UE (unlimited = None)."),
                     ]),
                     html.Div(id="prb-cap-label", style={"alignSelf": "center"}),
              ],
             ),
+            
+            
+     
+
 
             html.Hr(),
 

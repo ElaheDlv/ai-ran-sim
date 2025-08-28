@@ -32,7 +32,8 @@ class Cell:
         self.dl_throughput_per_prb_map = {}      # {imsi: float}
         
         # Limit for max DL PRBs any single UE can get (None = no cap)
-        self.prb_per_ue_cap = None
+        #self.prb_per_ue_cap = None
+        self.prb_per_ue_cap = settings.RAN_PRB_PER_UE_CAP 
 
 
 
