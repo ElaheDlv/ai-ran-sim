@@ -21,12 +21,11 @@ from .xapp_base import xAppBase
 import threading
 from collections import defaultdict, deque
 
-from dash.exceptions import PreventUpdate
-
 # Dash / Plotly
 # pip install dash==2.* plotly==5.*
 from dash import Dash, dcc, html, Input, Output, State
 import plotly.graph_objs as go
+
 
 from settings import (
     RAN_PRB_CAP_SLIDER_DEFAULT, RAN_PRB_CAP_SLIDER_MAX
@@ -297,33 +296,9 @@ class xAppLiveKPIDashboard(xAppBase):
              ],
             ),
             
-            # --- Slice share controls (eMBB / URLLC / mMTC) ---
-            html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "8px"}, children=[
-            html.Div([
-            html.Label("Slice shares (sum ≈ 100%)"),
-            html.Div(style={"display": "grid", "gridTemplateColumns": "1fr", "gap": "8px"}, children=[
-                html.Div([
-                    html.Label("eMBB"),
-                    dcc.Slider(id="w-embb", min=0, max=100, step=1, value=60,
-                           marks={0:"0",25:"25",50:"50",75:"75",100:"100"},
-                           tooltip={"always_visible": True}),
-                ]),
-                html.Div([
-                    html.Label("URLLC"),
-                    dcc.Slider(id="w-urllc", min=0, max=100, step=1, value=30,
-                           marks={0:"0",25:"25",50:"50",75:"75",100:"100"},
-                           tooltip={"always_visible": True}),
-                ]),
-                html.Div([
-                    html.Label("mMTC"),
-                    dcc.Slider(id="w-mmtc", min=0, max=100, step=1, value=10,
-                           marks={0:"0",25:"25",50:"50",75:"75",100:"100"},
-                           tooltip={"always_visible": True}),
-                        ]),
-                    ]),
-                ]),
-            html.Div(id="slice-weight-label", style={"alignSelf": "center", "fontWeight": 500}),
-            ]),
+            
+     
+
 
             html.Hr(),
 
@@ -382,33 +357,6 @@ class xAppLiveKPIDashboard(xAppBase):
             Output("ue-buffer", "figure"),
             Input("tick", "n_intervals"),
         )
-        
-        
-
-        @app.callback(
-            Output("slice-weight-label", "children"),
-            Input("w-embb", "value"),
-            Input("w-urllc", "value"),
-            Input("w-mmtc", "value"),
-        )
-        def _set_slice_weights(w_embb, w_urllc, w_mmtc):
-            if w_embb is None or w_urllc is None or w_mmtc is None:
-                raise PreventUpdate
-            w = [max(0, float(w_embb)), max(0, float(w_urllc)), max(0, float(w_mmtc))]
-            s = sum(w) or 1.0
-            # normalize to sum 1.0
-            weights = {
-                "eMBB": w[0]/s,
-                "URLLC": w[1]/s,
-                "mMTC": w[2]/s,
-            }
-            with self._lock:
-                for cell in self.cell_list.values():
-                    # create / overwrite a per-cell map the allocator will read
-                    cell.slice_weights = dict(weights)
-            pct = {k: f"{v*100:.1f}%" for k, v in weights.items()}
-            return f"Effective slice shares → eMBB: {pct['eMBB']} | URLLC: {pct['URLLC']} | mMTC: {pct['mMTC']}"
-
 
 
 

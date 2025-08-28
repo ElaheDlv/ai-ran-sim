@@ -35,31 +35,12 @@ class Cell:
         #self.prb_per_ue_cap = None
         self.prb_per_ue_cap = settings.RAN_PRB_PER_UE_CAP 
         
-        #self.slice_shares = {"eMBB": 0.5, "URLLC": 0.3, "mMTC": 0.2}  # default
-        #self.slice_caps   = {"eMBB": None, "URLLC": None, "mMTC": None}  # optional per-slice cap
         
-        # Default (normalized) slice weights; xApp will override live
-        #self.slice_weights = {"eMBB": 0.6, "URLLC": 0.3, "mMTC": 0.1}
-        
-        try:
-            from settings.ran_config import RAN_DEFAULT_SLICE_WEIGHTS
-            self.slice_weights = dict(RAN_DEFAULT_SLICE_WEIGHTS)
-        except Exception:
-            self.slice_weights = {"eMBB": 0.6, "URLLC": 0.3, "mMTC": 0.1}
-    
-        # Keep your existing per-UE cap mechanism if present
-        self.prb_per_ue_cap = getattr(self, "prb_per_ue_cap", None)
 
 
 
     def __repr__(self):
         return f"Cell({self.cell_id}, base_station={self.base_station.bs_id}, frequency_band={self.frequency_band}, carrier_frequency_MHz={self.carrier_frequency_MHz})"
-
-    
-    def slice_budget(self, slice_name):
-        share = self.slice_shares.get(slice_name, 0.0)
-        return int(max(0, share) * int(self.max_dl_prb))
-
 
     @property
     def allocated_dl_prb(self):
@@ -178,8 +159,71 @@ class Cell:
         #self.estimate_ue_bitrate_and_latency()
         self.estimate_ue_bitrate_and_latency(delta_time)
 
+    '''
+    def allocate_prb(self):
+        # QoS-aware Proportional Fair Scheduling (PFS)
 
-    '''    
+        # reset PRB allocation for all UEs
+        for ue in self.connected_ue_list.values():
+            self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"] = 0
+            self.prb_ue_allocation_dict[ue.ue_imsi]["uplink"] = 0
+
+        # sample QoS and channel condition-aware PRB allocation
+        ue_prb_requirements = {}
+    
+        # Step 1: Calculate required PRBs for GBR
+        for ue in self.connected_ue_list.values():
+            dl_gbr = ue.qos_profile["GBR_DL"]
+            dl_mcs = ue.downlink_mcs_data  # Assume this attribute exists
+            if dl_mcs is None:
+                print(
+                    f"Cell {self.cell_id}: UE {ue.ue_imsi} has no downlink MCS data. Skipping."
+                )
+                continue
+            dl_throughput_per_prb = estimate_throughput(
+                dl_mcs["modulation_order"], dl_mcs["target_code_rate"], 1
+            )
+            dl_required_prbs = math.ceil(dl_gbr / dl_throughput_per_prb)
+            ue_prb_requirements[ue.ue_imsi] = {
+                "dl_required_prbs": dl_required_prbs,
+                "dl_throughput_per_prb": dl_throughput_per_prb,
+            }
+            
+        # >>> NEW: persist for KPI collector
+        self.dl_total_prb_demand = {imsi: req["dl_required_prbs"] for imsi, req in ue_prb_requirements.items()}
+        self.dl_throughput_per_prb_map = {imsi: req["dl_throughput_per_prb"] for imsi, req in ue_prb_requirements.items()}
+        # <<< NEW
+        
+
+
+        # Step 2: Allocate PRBs to meet GBR
+        dl_total_prb_demand = sum(
+            req["dl_required_prbs"] for req in ue_prb_requirements.values()
+        )
+
+        if dl_total_prb_demand <= self.max_dl_prb:
+            # allocate PRBs based on the required PRBs
+            for ue_imsi, req in ue_prb_requirements.items():
+                self.prb_ue_allocation_dict[ue_imsi]["downlink"] = req[
+                    "dl_required_prbs"
+                ]
+        else:
+            # allocate PRBs based on the proportion
+            # first allocate at least one PRB to each UE to ensure minimum service
+            dl_remaining_prbs = self.max_dl_prb
+            for ue in self.connected_ue_list.values():
+                prb = min(1, dl_remaining_prbs)
+                self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"] = prb
+                dl_remaining_prbs -= prb
+
+            # then allocate the remaining PRBs based on the proportion
+            if dl_remaining_prbs > 0:
+                for ue_imsi, req in ue_prb_requirements.items():
+                    share = req["dl_required_prbs"] / dl_total_prb_demand
+                    additional_prbs = int(share * dl_remaining_prbs)
+                    self.prb_ue_allocation_dict[ue_imsi]["downlink"] += additional_prbs
+        '''
+        
     def allocate_prb(self):
         # QoS-aware Proportional Fair Scheduling (PFS) with optional per-UE cap
 
@@ -189,7 +233,7 @@ class Cell:
             self.prb_ue_allocation_dict[ue.ue_imsi]["uplink"] = 0
 
         ue_prb_requirements = {}
-        
+
         # ---- Step 1: per-UE PRB demand (from GBR & MCS)
         for ue in self.connected_ue_list.values():
             dl_gbr = ue.qos_profile["GBR_DL"]
@@ -264,163 +308,6 @@ class Cell:
 
         for imsi, a in alloc.items():
             self.prb_ue_allocation_dict[imsi]["downlink"] = int(a)
-            
-    '''
-    def allocate_prb(self):
-        # QoS-aware PF with optional per-UE cap and slice shares
-
-        # Reset PRBs
-        for ue in self.connected_ue_list.values():
-            self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"] = 0
-            self.prb_ue_allocation_dict[ue.ue_imsi]["uplink"] = 0
-
-        # ---- Step 1: per-UE demand from GBR + MCS
-        ue_prb_requirements = {}
-        for ue in self.connected_ue_list.values():
-            dl_gbr = getattr(ue, "qos_profile", {}).get("GBR_DL", 0.0)
-            dl_mcs = getattr(ue, "downlink_mcs_data", None)
-            if not dl_mcs:
-                # No usable MCS → skip demand this step
-                # print(f"Cell {self.cell_id}: UE {ue.ue_imsi} missing MCS")
-                continue
-            dl_tput_per_prb = estimate_throughput(
-                dl_mcs["modulation_order"], dl_mcs["target_code_rate"], 1
-            )
-            want = int(max(0, math.ceil((dl_gbr or 0.0) / max(dl_tput_per_prb, 1e-9))))
-            ue_prb_requirements[ue.ue_imsi] = {
-                "slice": getattr(ue, "slice_type", "eMBB"),  # default to eMBB
-                "want": want,
-                "tput_per_prb": dl_tput_per_prb,
-            }
-
-        # Persist for xApp KPIs
-        self.dl_total_prb_demand = {imsi: d["want"] for imsi, d in ue_prb_requirements.items()}
-        self.dl_throughput_per_prb_map = {imsi: d["tput_per_prb"] for imsi, d in ue_prb_requirements.items()}
-
-        if not ue_prb_requirements:
-            self.allocated_dl_prb = 0
-            return
-
-        # ---- Step 2: slice budgets
-        budget = int(getattr(self, "max_dl_prb", 0))
-        weights = dict(getattr(self, "slice_weights", {})) or {"eMBB": 1.0}
-        # normalize in case someone set odd values
-        ws = sum(max(0.0, v) for v in weights.values()) or 1.0
-        for k in list(weights.keys()):
-            weights[k] = max(0.0, float(weights[k])) / ws
-
-        # Which slices actually have UEs this step?
-        slice_to_imsis = collections.defaultdict(list)
-        for imsi, d in ue_prb_requirements.items():
-            slice_to_imsis[d["slice"]].append(imsi)
-
-        # Weighted budgets per slice (largest remainders for rounding)
-        raw = {s: budget * weights.get(s, 0.0) for s in weights}
-        base = {s: int(math.floor(v)) for s, v in raw.items()}
-        rems = sorted([(raw[s] - base[s], s) for s in weights], reverse=True)
-        slice_budget = dict(base)
-        leftover = budget - sum(base.values())
-        for _, s in rems:
-            if leftover <= 0:
-                break
-            slice_budget[s] += 1
-            leftover -= 1
-
-        # ---- Step 3: per-slice allocation with per-UE cap
-        cap = getattr(self, "prb_per_ue_cap", None)
-        alloc = {imsi: 0 for imsi in ue_prb_requirements}
-        global_leftover = 0
-
-        for s, imsis in slice_to_imsis.items():
-            B = int(slice_budget.get(s, 0))
-            if B <= 0:
-                continue
-
-            # desired = min(want, cap) if cap set
-            desired = {}
-            for imsi in imsis:
-                want = ue_prb_requirements[imsi]["want"]
-                desired[imsi] = min(want, int(cap)) if cap is not None else want
-
-            total_desired = sum(desired.values())
-            if total_desired == 0:
-                global_leftover += B
-                continue
-
-            if total_desired <= B:
-                # can satisfy all in this slice
-                for imsi, want in desired.items():
-                    alloc[imsi] += int(want)
-                # leftover slice PRBs become global
-                global_leftover += B - total_desired
-                continue
-
-            # proportional floor + remainders (respect cap)
-            remainders = []
-            used = 0
-            base_alloc = {}
-            for imsi, want in desired.items():
-                share_f = B * (want / total_desired)
-                b = int(math.floor(share_f))
-                base_alloc[imsi] = min(b, want)
-                used += base_alloc[imsi]
-                remainders.append((share_f - b, imsi, want))
-
-            L = max(0, B - used)
-            remainders.sort(reverse=True)
-            for _, imsi, want in remainders:
-                if L <= 0:
-                    break
-                if base_alloc[imsi] < want:
-                    base_alloc[imsi] += 1
-                    L -= 1
-
-            for imsi, a in base_alloc.items():
-                alloc[imsi] += int(a)
-
-        # ---- Step 4: redistribute any global leftover to UEs that still have headroom
-        if global_leftover > 0:
-            # room = desired - alloc (recompute desired with cap)
-            room = {}
-            total_room = 0
-            for imsi, d in ue_prb_requirements.items():
-                want = d["want"]
-                desired = min(want, int(cap)) if cap is not None else want
-                r = max(0, desired - alloc[imsi])
-                room[imsi] = r
-                total_room += r
-
-            if total_room > 0:
-                # proportional to remaining room
-                rema = []
-                add = {imsi: 0 for imsi in room}
-                used = 0
-                for imsi, r in room.items():
-                    share_f = global_leftover * (r / total_room) if total_room > 0 else 0
-                    b = int(math.floor(share_f))
-                    add[imsi] = min(b, r)
-                    used += add[imsi]
-                    rema.append((share_f - b, imsi, r))
-
-                L = max(0, global_leftover - used)
-                rema.sort(reverse=True)
-                for _, imsi, r in rema:
-                    if L <= 0:
-                        break
-                    if add[imsi] < r:
-                        add[imsi] += 1
-                        L -= 1
-
-                for imsi, inc in add.items():
-                    alloc[imsi] += inc
-            # else: nobody can take more → drop leftover
-
-        # ---- Commit
-        total_alloc = 0
-        for imsi, a in alloc.items():
-            self.prb_ue_allocation_dict[imsi]["downlink"] = int(a)
-            total_alloc += int(a)
-        self.allocated_dl_prb = int(total_alloc)
 
 
         # # Logging
@@ -428,7 +315,24 @@ class Cell:
         #     print(
         #         f"Cell: {self.cell_id} allocated {allocation['downlink']} DL PRBs for UE {ue_imsi}"
         #     )
-    
+    '''
+    def estimate_ue_bitrate_and_latency(self):
+        for ue in self.connected_ue_list.values():
+            if ue.downlink_mcs_data is None:
+                print(
+                    f"Cell {self.cell_id}: UE {ue.ue_imsi} has no downlink MCS data. Skipping."
+                )
+                continue
+            ue_modulation_order = ue.downlink_mcs_data["modulation_order"]
+            ue_code_rate = ue.downlink_mcs_data["target_code_rate"]
+            ue_dl_prb = self.prb_ue_allocation_dict[ue.ue_imsi]["downlink"]
+            # TODO: uplink bitrate
+            dl_bitrate = estimate_throughput(
+                ue_modulation_order, ue_code_rate, ue_dl_prb
+            )
+            ue.set_downlink_bitrate(dl_bitrate)
+            # TODO: downlink and uplink latency
+      '''      
     def estimate_ue_bitrate_and_latency(self, delta_time):
         for ue in self.connected_ue_list.values():
             if ue.downlink_mcs_data is None:
