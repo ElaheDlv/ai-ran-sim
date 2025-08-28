@@ -26,6 +26,8 @@ from collections import defaultdict, deque
 from dash import Dash, dcc, html, Input, Output, State
 import plotly.graph_objs as go
 
+from dash.exceptions import PreventUpdate
+
 
 from settings import (
     RAN_PRB_CAP_SLIDER_DEFAULT, RAN_PRB_CAP_SLIDER_MAX
@@ -95,6 +97,9 @@ class xAppLiveKPIDashboard(xAppBase):
         self._last_step = None
         
         self._prb_cap = None  # None = unlimited; or int for a live cap
+        self.w_embb = None
+        self.w_urllc = None
+        self.w_mmtc = None
 
 
     # ---------------- xApp lifecycle ----------------
@@ -175,94 +180,6 @@ class xAppLiveKPIDashboard(xAppBase):
 
         app = Dash(__name__)
         self._dash_app = app
-        '''
-        def ue_options():
-            return [{"label": imsi, "value": imsi} for imsi in self.ue_list.keys()]
-        def cell_options():
-            return [{"label": cid, "value": cid} for cid in self.cell_list.keys()]
-        '''
-        '''
-        app.layout = html.Div(
-            style={"fontFamily": "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", "padding": "12px"},
-            children=[
-                html.H2("Live RAN KPI Dashboard"),
-                html.P("Streaming KPIs directly from UEs/Cells within the simulator."),
-                #
-                #html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}, children=[
-                #    html.Div([
-                #        html.Label("Focus UEs (optional)"),
-                #        dcc.Dropdown(id="ue-filter", multi=True, options=ue_options()),
-                #    ]),
-                #    html.Div([
-                #        html.Label("Focus Cells (optional)"),
-                #        dcc.Dropdown(id="cell-filter", multi=True, options=cell_options()),
-                #    ]),
-                #
-                #]),
-                
-
-                html.Hr(),
-
-                #html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}, children=[
-                #    dcc.Graph(id="ue-bitrate"),
-                #    dcc.Graph(id="ue-sinr-cqi"),
-                #]),
-                
-                
-                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr", "gap": "12px"}, children=[
-                dcc.Graph(id="ue-bitrate"),
-                ]),
-                
-                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "12px"}, children=[
-                dcc.Graph(id="ue-sinr"),
-                dcc.Graph(id="ue-cqi"),
-            ]),
-
-
-                
-                #
-                #html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "12px"}, children=[
-                #    dcc.Graph(id="ue-prb"),
-                #    dcc.Graph(id="cell-load"),
-                #]),
-                #
-                
-                # PRBs (granted) vs PRBs (requested) in separate plots
-                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px", "marginTop": "12px"}, children=[
-                dcc.Graph(id="ue-prb-granted"),
-                dcc.Graph(id="ue-prb-requested"),
-                ]),
-
-                # Cell load panel kept separate
-                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr", "gap": "12px", "marginTop": "12px"}, children=[
-                dcc.Graph(id="cell-load"),
-                ]),
-
-
-                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr", "gap": "12px", "marginTop": "12px"}, children=[
-                    dcc.Graph(id="ue-buffer"),
-                ]),
-
-                dcc.Interval(id="tick", interval=int(REFRESH_SEC * 1000), n_intervals=0),
-                
-                # Controls row (add this near the top of children[], after title/paragraph)
-                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 2fr", "gap": "12px", "marginTop": "8px"}, children=[
-                html.Div([
-                html.Label("Max DL PRBs per UE (live)"),
-                dcc.Slider(
-                    id="prb-cap",
-                    min=0, max=50, step=1, value=10,  # adjust max to your band’s PRB range
-                    tooltip={"always_visible": True},
-                    marks={0: "0", 10: "10", 20: "20", 30: "30", 40: "40", 50: "50"},
-                ),
-                html.Small("Set to a lower value to throttle any single UE’s allocation (None = unlimited)."),
-            ]),
-            html.Div(id="prb-cap-label", style={"alignSelf": "center"}),
-        ]),
-
-            ]
-        )
-        '''
         
         app.layout = html.Div(
         style=CONTAINER_STYLE,
@@ -293,11 +210,34 @@ class xAppLiveKPIDashboard(xAppBase):
                         html.Small("Set lower to throttle any single UE (unlimited = None)."),
                     ]),
                     html.Div(id="prb-cap-label", style={"alignSelf": "center"}),
-             ],
+            ],
             ),
             
             
-     
+            # --- Slice share controls (eMBB / URLLC / mMTC) ---
+            html.Div(style={"display": "grid",
+                "gridTemplateColumns": "1fr 1fr",
+                "gap": "12px",
+                "marginTop": "8px"}, children=[
+            html.Div([
+                html.Label("Slice shares (sum ≈ 100%)"),
+                html.Div(style={"display": "grid", "gridTemplateColumns": "1fr", "gap": "8px"}, children=[
+                html.Div([
+                    html.Label("eMBB"),
+                    dcc.Slider(id="w-embb",  min=0, max=100, step=1, value=60,marks={0:"0",25:"25",50:"50",75:"75",100:"100"},tooltip={"always_visible": True}),
+                ]),
+                html.Div([
+                    html.Label("URLLC"),
+                    dcc.Slider(id="w-urllc", min=0, max=100, step=1, value=30,marks={0:"0",25:"25",50:"50",75:"75",100:"100"},tooltip={"always_visible": True}),
+                ]),
+                html.Div([
+                    html.Label("mMTC"),
+                    dcc.Slider(id="w-mmtc",  min=0, max=100, step=1, value=10,marks={0:"0",25:"25",50:"50",75:"75",100:"100"},tooltip={"always_visible": True}),
+                        ]),
+                    ]),
+                ]),
+                html.Div(id="slice-weight-label", style={"alignSelf": "center", "fontWeight": 500}),
+            ]),
 
 
             html.Hr(),
@@ -333,18 +273,6 @@ class xAppLiveKPIDashboard(xAppBase):
                     cell.prb_per_ue_cap = self._prb_cap
                 return f"Current cap: {self._prb_cap if self._prb_cap is not None else 'unlimited'} PRBs/UE"
 
-        '''
-        @app.callback(
-            Output("ue-bitrate", "figure"),
-            Output("ue-sinr-cqi", "figure"),
-            Output("ue-prb", "figure"),
-            Output("cell-load", "figure"),
-            Output("ue-buffer", "figure"),
-            Input("tick", "n_intervals"),
-            State("ue-filter", "value"),
-            State("cell-filter", "value"),
-        )
-        '''
         @app.callback(
             #Output("ue-bitrate", "figure"),
             #Output("ue-sinr-cqi", "figure"),
@@ -357,7 +285,30 @@ class xAppLiveKPIDashboard(xAppBase):
             Output("ue-buffer", "figure"),
             Input("tick", "n_intervals"),
         )
+        
+        
+        @app.callback(
+            Output("slice-weight-label", "children"),
+            Input("w-embb",  "value"),
+            Input("w-urllc", "value"),
+            Input("w-mmtc",  "value"),
+        )
+        def _set_slice_weights(w_embb, w_urllc, w_mmtc):
+            if w_embb is None or w_urllc is None or w_mmtc is None:
+                raise PreventUpdate
 
+            # normalize to sum=1.0
+            w = [max(0.0, float(w_embb)), max(0.0, float(w_urllc)), max(0.0, float(w_mmtc))]
+            s = sum(w) or 1.0
+            weights = {"eMBB": w[0]/s, "URLLC": w[1]/s, "mMTC": w[2]/s}
+
+            # push into cells (the allocator will read this)
+            with self._lock:
+                for cell in self.cell_list.values():
+                    cell.slice_weights = dict(weights)  # <-- keep this name consistent with cell.py
+
+            pct = {k: f"{v*100:.1f}%" for k, v in weights.items()}
+            return f"Effective slice shares → eMBB: {pct['eMBB']} | URLLC: {pct['URLLC']} | mMTC: {pct['mMTC']}"
 
 
         #def _update(_n, ue_filter, cell_filter):
@@ -367,27 +318,7 @@ class xAppLiveKPIDashboard(xAppBase):
                 if not tx:
                     # Empty figures before first sample
                     return go.Figure(), go.Figure(), go.Figure(), go.Figure(), go.Figure()
-                '''
-                if ue_filter is None or len(ue_filter) == 0:
-                    ue_keys = list(set(
-                        list(self._ue_dl_mbps.keys())
-                        + list(self._ue_sinr_db.keys())
-                        + list(self._ue_cqi.keys())
-                        + list(self._ue_dl_buf.keys())
-                        + list(self._ue_dl_prb.keys())
-                    ))
-                else:
-                    ue_keys = ue_filter
 
-                if cell_filter is None or len(cell_filter) == 0:
-                    cell_keys = list(set(
-                        list(self._cell_dl_load.keys())
-                        + list(self._cell_alloc_prb.keys())
-                        + list(self._cell_max_prb.keys())
-                    ))
-                else:
-                    cell_keys = cell_filter
-                '''
                 ue_keys = list(set(
                 list(self._ue_dl_mbps.keys())
                 + list(self._ue_sinr_db.keys())
@@ -409,13 +340,7 @@ class xAppLiveKPIDashboard(xAppBase):
                     ys = list(self._ue_dl_mbps.get(imsi, []))
                     if ys:
                         tr_bitrate.append(go.Scatter(x=tx[-len(ys):], y=ys, mode="lines", name=f"{imsi} DL Mbps"))
-                '''
-                fig_bitrate = go.Figure(
-                    data=tr_bitrate,
-                    layout=go.Layout(title="Per‑UE Downlink Bitrate (Mbps)",
-                                     xaxis={"title": "Sim step"}, yaxis={"title": "Mbps"})
-                )
-                '''
+
 
                 
                 # --- UE SINR ---
@@ -446,16 +371,7 @@ class xAppLiveKPIDashboard(xAppBase):
                         tr_prb_granted.append(go.Scatter(
                         x=tx[-len(ys_g):], y=ys_g, mode="lines", name=f"{imsi} granted"
                         ))
-                '''
-                fig_prb_granted = go.Figure(
-                    data=tr_prb_granted,
-                    layout=go.Layout(
-                    title="Per‑UE DL PRBs — GRANTED",
-                    xaxis={"title": "Sim step"},
-                    yaxis={"title": "PRBs"}
-                    )
-                    )
-                '''
+
 
                 # --- UE DL PRBs: REQUESTED (separate plot) ---
                 tr_prb_requested = []
@@ -465,16 +381,7 @@ class xAppLiveKPIDashboard(xAppBase):
                         tr_prb_requested.append(go.Scatter(
                         x=tx[-len(ys_r):], y=ys_r, mode="lines", name=f"{imsi} requested"
                         ))
-                '''
-                fig_prb_requested = go.Figure(
-                data=tr_prb_requested,
-                layout=go.Layout(
-                title="Per‑UE DL PRBs — REQUESTED",
-                xaxis={"title": "Sim step"},
-                yaxis={"title": "PRBs"}
-                 )
-                )
-                '''
+
 
 
 
@@ -491,26 +398,14 @@ class xAppLiveKPIDashboard(xAppBase):
                     ys_m = list(self._cell_max_prb.get(cid, []))
                     if ys_m:
                         tr_cell.append(go.Scatter(x=tx[-len(ys_m):], y=ys_m, mode="lines", name=f"{cid} max PRB", line={"dash": "dash"}))
-                '''
-                fig_cell = go.Figure(
-                    data=tr_cell,
-                    layout=go.Layout(title="Per‑Cell Load & PRBs",
-                                     xaxis={"title": "Sim step"}, yaxis={"title": "Value / PRBs"})
-                )
-                '''
+
                 # --- UE DL buffer (optional) ---
                 tr_buf = []
                 for imsi in ue_keys:
                     ys = list(self._ue_dl_buf.get(imsi, []))
                     if ys:
                         tr_buf.append(go.Scatter(x=tx[-len(ys):], y=ys, mode="lines", name=f"{imsi} DL buffer (bytes)"))
-                '''
-                fig_buf = go.Figure(
-                    data=tr_buf,
-                    layout=go.Layout(title="Per‑UE DL Buffer (bytes)*",
-                                     xaxis={"title": "Sim step"}, yaxis={"title": "Bytes"})
-                )
-                '''
+
             
             fig_bitrate = tidy(go.Figure(data=tr_bitrate), "Per‑UE Downlink Bitrate (Mbps)", "Mbps")
 
